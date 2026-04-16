@@ -1,22 +1,26 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: APK Builder Pro API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: projects
+    description: Project conversion operations
+  - name: builds
+    description: Build management
+  - name: keystore
+    description: Keystore management
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +28,224 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /projects:
+    get:
+      operationId: listProjects
+      tags: [projects]
+      summary: List all projects
+      responses:
+        "200":
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
+    post:
+      operationId: createProject
+      tags: [projects]
+      summary: Create a new project from URL or upload info
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewProject"
+      responses:
+        "201":
+          description: Project created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+
+  /projects/{id}:
+    get:
+      operationId: getProject
+      tags: [projects]
+      summary: Get project details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Project details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+    delete:
+      operationId: deleteProject
+      tags: [projects]
+      summary: Delete a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /projects/{id}/detect:
+    post:
+      operationId: detectProjectType
+      tags: [projects]
+      summary: Detect project type (React, Vue, Next.js, etc.)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Detected project info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectDetection"
+
+  /projects/{id}/build:
+    post:
+      operationId: startBuild
+      tags: [builds]
+      summary: Start APK or AAB build
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BuildConfig"
+      responses:
+        "202":
+          description: Build started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Build"
+
+  /builds:
+    get:
+      operationId: listBuilds
+      tags: [builds]
+      summary: List all builds
+      responses:
+        "200":
+          description: List of builds
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Build"
+
+  /builds/{id}:
+    get:
+      operationId: getBuild
+      tags: [builds]
+      summary: Get build status and logs
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Build details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Build"
+
+  /builds/{id}/cancel:
+    post:
+      operationId: cancelBuild
+      tags: [builds]
+      summary: Cancel a running build
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Build"
+
+  /keystore:
+    get:
+      operationId: getKeystore
+      tags: [keystore]
+      summary: Get keystore info
+      responses:
+        "200":
+          description: Keystore info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Keystore"
+    post:
+      operationId: createKeystore
+      tags: [keystore]
+      summary: Generate a new keystore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewKeystore"
+      responses:
+        "201":
+          description: Keystore created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Keystore"
+
+  /stats:
+    get:
+      operationId: getDashboardStats
+      tags: [builds]
+      summary: Get dashboard statistics
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /system/check:
+    get:
+      operationId: systemCheck
+      tags: [health]
+      summary: Check required tools availability (Java, Node, Gradle, etc.)
+      responses:
+        "200":
+          description: System check results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemCheck"
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +253,256 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    Project:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        sourceType:
+          type: string
+          enum: [github, zip, local]
+        sourceUrl:
+          type: string
+          nullable: true
+        projectType:
+          type: string
+          nullable: true
+          description: "Detected type: react, vue, nextjs, angular, html, node"
+        packageId:
+          type: string
+          nullable: true
+        appName:
+          type: string
+          nullable: true
+        versionName:
+          type: string
+          nullable: true
+        versionCode:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [pending, detecting, ready, building, failed]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, name, sourceType, status, createdAt, updatedAt]
+
+    NewProject:
+      type: object
+      properties:
+        name:
+          type: string
+        sourceType:
+          type: string
+          enum: [github, zip, local]
+        sourceUrl:
+          type: string
+          nullable: true
+        packageId:
+          type: string
+          nullable: true
+        appName:
+          type: string
+          nullable: true
+        versionName:
+          type: string
+          nullable: true
+        versionCode:
+          type: integer
+          nullable: true
+      required: [name, sourceType]
+
+    ProjectDetection:
+      type: object
+      properties:
+        projectType:
+          type: string
+        framework:
+          type: string
+          nullable: true
+        buildTool:
+          type: string
+          nullable: true
+        nodeVersion:
+          type: string
+          nullable: true
+        hasPackageJson:
+          type: boolean
+        warnings:
+          type: array
+          items:
+            type: string
+        recommendations:
+          type: array
+          items:
+            type: string
+      required: [projectType, hasPackageJson, warnings, recommendations]
+
+    BuildConfig:
+      type: object
+      properties:
+        buildType:
+          type: string
+          enum: [debug, release]
+        outputFormat:
+          type: string
+          enum: [apk, aab]
+        minSdkVersion:
+          type: integer
+          nullable: true
+        targetSdkVersion:
+          type: integer
+          nullable: true
+        useKeystore:
+          type: boolean
+        playStoreMode:
+          type: boolean
+          description: "Generate Play Store ready AAB with metadata"
+        storeTitle:
+          type: string
+          nullable: true
+        storeDescription:
+          type: string
+          nullable: true
+        storeCategory:
+          type: string
+          nullable: true
+      required: [buildType, outputFormat, useKeystore]
+
+    Build:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        buildType:
+          type: string
+          enum: [debug, release]
+        outputFormat:
+          type: string
+          enum: [apk, aab]
+        status:
+          type: string
+          enum: [queued, running, success, failed, cancelled]
+        progress:
+          type: integer
+          description: "0-100"
+        logs:
+          type: array
+          items:
+            type: string
+        outputPath:
+          type: string
+          nullable: true
+        outputSizeBytes:
+          type: integer
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        playStoreMode:
+          type: boolean
+        startedAt:
+          type: string
+          nullable: true
+        completedAt:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+      required: [id, projectId, buildType, outputFormat, status, progress, logs, playStoreMode, createdAt]
+
+    Keystore:
+      type: object
+      properties:
+        id:
+          type: integer
+        alias:
+          type: string
+        commonName:
+          type: string
+        organization:
+          type: string
+          nullable: true
+        validityYears:
+          type: integer
+        createdAt:
+          type: string
+        expiresAt:
+          type: string
+      required: [id, alias, commonName, validityYears, createdAt, expiresAt]
+
+    NewKeystore:
+      type: object
+      properties:
+        alias:
+          type: string
+        password:
+          type: string
+        commonName:
+          type: string
+        organization:
+          type: string
+          nullable: true
+        country:
+          type: string
+          nullable: true
+        validityYears:
+          type: integer
+      required: [alias, password, commonName, validityYears]
+
+    DashboardStats:
+      type: object
+      properties:
+        totalProjects:
+          type: integer
+        totalBuilds:
+          type: integer
+        successfulBuilds:
+          type: integer
+        failedBuilds:
+          type: integer
+        runningBuilds:
+          type: integer
+        totalOutputSizeMB:
+          type: number
+        recentBuilds:
+          type: array
+          items:
+            $ref: "#/components/schemas/Build"
+      required: [totalProjects, totalBuilds, successfulBuilds, failedBuilds, runningBuilds, totalOutputSizeMB, recentBuilds]
+
+    SystemCheckItem:
+      type: object
+      properties:
+        name:
+          type: string
+        available:
+          type: boolean
+        version:
+          type: string
+          nullable: true
+        required:
+          type: boolean
+        installHint:
+          type: string
+          nullable: true
+      required: [name, available, required]
+
+    SystemCheck:
+      type: object
+      properties:
+        allRequired:
+          type: boolean
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SystemCheckItem"
+      required: [allRequired, items]
