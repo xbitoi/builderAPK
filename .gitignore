@@ -2,6 +2,8 @@
 
 # compiled output
 dist
+# Keep pre-built frontend for Windows local use
+!artifacts/apk-builder/dist
 tmp
 out-tsc
 *.tsbuildinfo
