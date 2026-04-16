@@ -28,6 +28,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
+      {/* Sidebar */}
       <aside className="w-60 flex-shrink-0 flex flex-col border-r border-border bg-sidebar z-10">
         <div className="flex items-center gap-3 px-5 py-5 border-b border-border">
           <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary/20 border border-primary/30">
@@ -82,12 +83,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <main
-        className={cn(
-          "flex-1 overflow-y-auto transition-all duration-300",
-          isOpen && "mr-[420px]"
-        )}
-      >
+      {/* AI Chat Panel — inline left panel, collapses to width 0 */}
+      <AIChatPanel />
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-y-auto min-w-0">
         <motion.div
           key={location}
           initial={{ opacity: 0, y: 8 }}
@@ -98,8 +98,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           {children}
         </motion.div>
       </main>
-
-      <AIChatPanel />
     </div>
   );
 }
