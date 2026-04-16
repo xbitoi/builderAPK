@@ -5,6 +5,7 @@ import buildsRouter from "./builds";
 import keystoreRouter from "./keystore";
 import statsRouter from "./stats";
 import systemRouter from "./system";
+import geminiRouter from "./gemini";
 
 const router: IRouter = Router();
 
@@ -15,5 +16,6 @@ router.use("/projects", buildsRouter);
 router.use("/keystore", keystoreRouter);
 router.use("/stats", statsRouter);
 router.use("/system/check", systemRouter);
+router.use("/gemini", geminiRouter);
 
 export default router;

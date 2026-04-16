@@ -5,7 +5,8 @@ import { useGetBuild, useCancelBuild } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetBuildQueryKey } from "@workspace/api-client-react";
 import { StatusBadge } from "@/components/StatusBadge";
-import { ArrowLeft, Download, XCircle, CheckCircle2, Clock, HardDrive } from "lucide-react";
+import { useAIChat } from "@/contexts/AIChatContext";
+import { ArrowLeft, Download, XCircle, CheckCircle2, Clock, HardDrive, Sparkles } from "lucide-react";
 
 const BUILD_STEPS = [
   "Initializing",
@@ -62,6 +63,15 @@ export default function BuildMonitor() {
   const handleCancel = async () => {
     await cancelBuild.mutateAsync({ id });
     queryClient.invalidateQueries({ queryKey: getGetBuildQueryKey(id) });
+  };
+
+  const { setContextLogs, setIsOpen } = useAIChat();
+
+  const handleAnalyzeWithAI = () => {
+    if (build?.logs && build.logs.length > 0) {
+      setContextLogs(build.logs.join("\n"));
+      setIsOpen(true);
+    }
   };
 
   const currentStep = build ? Math.min(Math.floor((build.progress / 100) * BUILD_STEPS.length), BUILD_STEPS.length - 1) : 0;
@@ -137,7 +147,18 @@ export default function BuildMonitor() {
             <div className="w-3 h-3 rounded-full bg-green-500/60" />
             <span className="text-xs text-muted-foreground ml-2 font-mono">build.log</span>
           </div>
-          <span className="text-xs text-muted-foreground">{build?.logs?.length ?? 0} lines</span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">{build?.logs?.length ?? 0} lines</span>
+            {build?.logs && build.logs.length > 0 && (
+              <button
+                onClick={handleAnalyzeWithAI}
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-primary/15 text-primary border border-primary/25 hover:bg-primary/25 transition-colors"
+              >
+                <Sparkles className="w-3 h-3" />
+                Analyze with AI
+              </button>
+            )}
+          </div>
         </div>
         <div
           ref={logsRef}

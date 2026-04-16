@@ -40,7 +40,16 @@ APK Builder Pro — a full-stack web application for converting web projects (Re
 - Keystore manager with key generation and password strength indicator
 - Play Store preparation page with readiness checklist and store listing form
 - Settings page with system tool status
+- **Gemini AI Assistant** — dockable chat panel with SSE streaming, multi-model selection, conversation history, build log analysis, and markdown rendering
+
+## AI Integration
+
+- Provider: Replit AI Integrations (Gemini) — no user API key needed
+- Package: `@workspace/integrations-gemini-ai` (from Replit AI integrations template)
+- Models: gemini-2.5-flash, gemini-2.5-pro, gemini-2.0-flash, gemini-1.5-pro
+- API routes: `/api/gemini/conversations` (CRUD) + `/api/gemini/conversations/:id/messages` (SSE stream)
+- Frontend: sliding panel (420px) toggled from sidebar, context-aware log injection from BuildMonitor
 
 ## DB Schema
 
-Tables: `projects`, `builds`, `keystores`
+Tables: `projects`, `builds`, `keystores`, `conversations`, `messages`
