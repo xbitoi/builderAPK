@@ -7,6 +7,7 @@ import statsRouter from "./stats";
 import systemRouter from "./system";
 import geminiRouter from "./gemini";
 import geminiKeysRouter from "./gemini-keys";
+import gitPushRouter from "./git-push";
 
 const router: IRouter = Router();
 
@@ -19,5 +20,6 @@ router.use("/stats", statsRouter);
 router.use("/system/check", systemRouter);
 router.use("/gemini", geminiRouter);
 router.use("/gemini-keys", geminiKeysRouter);
+router.use(gitPushRouter);
 
 export default router;
