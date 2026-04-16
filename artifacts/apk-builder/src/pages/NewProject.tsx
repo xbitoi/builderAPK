@@ -73,7 +73,7 @@ export default function NewProject() {
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="bg-card border border-card-border rounded-xl p-5 space-y-4">
           <h2 className="text-sm font-semibold text-foreground">Source Type</h2>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {sourceOptions.map(({ id, label, icon: Icon, desc }) => (
               <button
                 key={id}
@@ -135,7 +135,7 @@ export default function NewProject() {
 
         <div className="bg-card border border-card-border rounded-xl p-5 space-y-4">
           <h2 className="text-sm font-semibold text-foreground">Android Configuration</h2>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-muted-foreground font-medium mb-1.5 block">Package ID</label>
               <input

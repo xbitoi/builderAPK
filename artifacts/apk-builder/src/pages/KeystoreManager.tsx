@@ -82,7 +82,7 @@ export default function KeystoreManager() {
             </div>
             <CheckCircle className="ml-auto w-5 h-5 text-green-400" />
           </div>
-          <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
             {[
               { label: "Alias", value: keystore.alias, icon: Key },
               { label: "Common Name", value: keystore.commonName, icon: Building2 },
@@ -114,7 +114,7 @@ export default function KeystoreManager() {
           <Key className="w-4 h-4 text-primary" /> Generate New Keystore
         </h2>
         <form onSubmit={handleCreate} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-muted-foreground font-medium mb-1.5 block">Key Alias</label>
               <input
@@ -157,7 +157,7 @@ export default function KeystoreManager() {
               className="w-full bg-secondary border border-input rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="text-xs text-muted-foreground font-medium mb-1.5 block">Organization</label>
               <input
