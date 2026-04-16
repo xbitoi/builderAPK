@@ -90,12 +90,16 @@ if "!SESSION_SECRET!"=="" (
 
 REM ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 REM  STEP 5 — Install dependencies
+REM  --no-frozen-lockfile allows pnpm to download Windows-specific
+REM  native binaries (e.g. @rollup/rollup-win32-x64-msvc) that are
+REM  not included in the Linux-generated lockfile.
 REM ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 echo.
 echo  [5/7] Installing dependencies (first run may take a few minutes)...
-call pnpm install
+call pnpm install --no-frozen-lockfile
 if errorlevel 1 (
     echo  [ERROR] Dependency install failed. See output above.
+    echo  Try running as Administrator, or delete node_modules and try again.
     pause & exit /b 1
 )
 echo        Dependencies installed [OK]
