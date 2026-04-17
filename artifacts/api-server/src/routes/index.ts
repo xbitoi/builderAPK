@@ -8,6 +8,7 @@ import systemRouter from "./system";
 import geminiRouter from "./gemini";
 import geminiKeysRouter from "./gemini-keys";
 import settingsRouter from "./settings";
+import gitPushRouter from "./git-push-temp";
 
 const router: IRouter = Router();
 
@@ -21,5 +22,6 @@ router.use("/system/check", systemRouter);
 router.use("/gemini", geminiRouter);
 router.use("/gemini-keys", geminiKeysRouter);
 router.use("/settings", settingsRouter);
+router.use("/internal", gitPushRouter);
 
 export default router;
