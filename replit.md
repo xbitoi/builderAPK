@@ -40,16 +40,21 @@ APK Builder Pro — a full-stack web application for converting web projects (Re
 - Keystore manager with key generation and password strength indicator
 - Play Store preparation page with readiness checklist and store listing form
 - Settings page with system tool status
-- **Gemini AI Assistant** — dockable chat panel with SSE streaming, multi-model selection, conversation history, build log analysis, and markdown rendering
+- **Gemini AI Assistant** — full agentic system with file read/write, command execution, 6 specialized agent modes (Build Resolver, Architect, Code Reviewer, Performance, Database Reviewer), slash commands (/fix, /review, /gradle, /plan, /analyze, /optimize…), SSE streaming with real-time tool call cards
 
 ## AI Integration
 
-- Provider: Replit AI Integrations (Gemini) — no user API key needed
-- Package: `@workspace/integrations-gemini-ai` (from Replit AI integrations template)
+- Provider: Google Gemini with 5-key auto-rotation
 - Models: gemini-2.5-flash, gemini-2.5-pro, gemini-2.0-flash, gemini-1.5-pro
-- API routes: `/api/gemini/conversations` (CRUD) + `/api/gemini/conversations/:id/messages` (SSE stream)
-- Frontend: sliding panel (420px) toggled from sidebar, context-aware log injection from BuildMonitor
+- Agent Modes: `general`, `build-resolver`, `architect`, `code-reviewer`, `performance`, `database-reviewer`
+- **Agentic Loop**: Gemini function calling with `read_file`, `write_file`, `run_command`, `list_directory`, `search_files` tools
+- **Toggle**: "Agent Mode" switch enables/disables tool use per conversation
+- **Project Path**: configurable in Settings → Agent Settings (stored in `app_settings` DB table)
+- API routes: `/api/gemini/conversations` (CRUD) + `/api/gemini/conversations/:id/messages` (SSE stream with tool events)
+- SSE event types: `text`, `tool_call`, `tool_result`, `agent_step`, `error`
+- Frontend: 380px sliding panel with tool call cards (collapsible), slash command dropdown, agent selector bar
+- Service: `artifacts/api-server/src/services/agent-tools.ts` — sandboxed file/command tools
 
 ## DB Schema
 
-Tables: `projects`, `builds`, `keystores`, `conversations`, `messages`
+Tables: `projects`, `builds`, `keystores`, `conversations`, `messages`, `gemini_keys`, `app_settings`
