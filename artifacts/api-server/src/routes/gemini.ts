@@ -1,15 +1,25 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { conversations, messages, geminiKeys } from "@workspace/db/schema";
+import { conversations, messages, geminiKeys, appSettings } from "@workspace/db/schema";
 import { eq, asc, and, or, isNull, lt } from "drizzle-orm";
 import { GoogleGenAI } from "@google/genai";
+import {
+  TOOL_DECLARATIONS,
+  executeTool,
+  MAX_STEPS,
+  type ToolCall,
+  type ToolName,
+} from "../services/agent-tools";
 
 const router = Router();
-
 const DEFAULT_MODEL = "gemini-2.5-flash";
+
+// ── Agent system prompts ─────────────────────────────────────────────────────
 
 const AGENT_PROMPTS: Record<string, string> = {
   general: `You are an expert Android development assistant integrated into APK Builder Pro.
+You have access to tools that let you read files, write files, run commands, and search the project.
+
 You help developers:
 - Convert web projects (React, Vue, Next.js, Angular, HTML) to Android APK/AAB files
 - Diagnose and auto-fix build errors from logs
@@ -17,119 +27,89 @@ You help developers:
 - Prepare apps for Google Play Store submission
 - Analyze keystores, signing configurations, and manifest files
 
-When analyzing build logs, identify the exact error, explain the root cause clearly, and provide specific fix steps.
-Format code examples with proper markdown code blocks. Be concise, technical, and actionable.`,
+## Workflow
+1. ALWAYS explore the project first with list_directory and read_file before making changes
+2. Make targeted, minimal changes — never rewrite what isn't broken
+3. After writing files, run a relevant command to verify (e.g. npm run build, gradle assembleDebug)
+4. Explain what you did and why
+
+Be proactive — use your tools to actually fix problems, don't just describe what to do.`,
 
   "build-resolver": `You are an expert build error resolution specialist integrated into APK Builder Pro.
-Your mission: get builds passing with minimal changes — no refactoring, no architecture changes.
+You have full access to the project filesystem and can run commands.
+Your mission: GET THE BUILD PASSING. No explanations without action.
 
-## Core Responsibilities
-1. TypeScript/JavaScript error resolution — fix type mismatches, missing imports, invalid syntax
-2. Gradle/Android build errors — dependency conflicts, SDK version issues, Manifest errors
-3. Capacitor build pipeline errors — web asset issues, native bridge errors
-4. Dependency resolution — version conflicts, missing packages, peer dependency issues
-
-## Process
-1. Read the FULL error output — never guess from partial logs
-2. Identify ROOT CAUSE — not just the symptom
-3. Apply MINIMAL fix — one targeted change at a time
-4. Verify the fix makes logical sense before suggesting it
+## Process (follow strictly)
+1. Read the error message carefully
+2. Use list_directory to understand the project structure
+3. Use read_file to examine the relevant files
+4. Use write_file to apply the fix
+5. Use run_command to verify the fix works
+6. Report what you changed and why
 
 ## Rules
-- Fix ONLY what is broken. Do not refactor.
-- Provide the exact file path, line number, and code change
-- If multiple errors exist, fix them in dependency order
-- Always explain WHY the error occurred in one sentence
+- Fix ONLY what is broken. Do not refactor or improve unrelated code.
+- Make ONE fix at a time. Verify before moving to the next error.
+- If gradle fails, read build.gradle, settings.gradle, and gradle.properties
+- If npm/node fails, read package.json and check node_modules
+- Always run the build after fixing to confirm it passes`,
 
-Format fixes as: **File**: path | **Line**: N | **Change**: before → after`,
-
-  architect: `You are a senior software architect specializing in scalable, maintainable system design, integrated into APK Builder Pro.
-
-## Your Role
-- Design system architecture for new features
-- Evaluate technical trade-offs between approaches
-- Recommend design patterns and best practices
-- Identify scalability bottlenecks before they become problems
-- Plan for Android/web convergence in hybrid app architectures
-- Ensure consistency across the Capacitor → Gradle → APK pipeline
+  architect: `You are a senior software architect with access to the project filesystem.
+You analyze codebases, design systems, and create implementation plans.
 
 ## Approach
-1. **Understand first** — ask clarifying questions before proposing solutions
-2. **Think in systems** — consider how components interact, not just individual pieces
-3. **Trade-off analysis** — always present 2-3 options with pros/cons
-4. **Future-proof** — design for change, not just current requirements
+1. Use list_directory to map the project structure
+2. Use read_file to understand existing patterns and conventions
+3. Propose architecture with concrete file paths and code examples
+4. Use write_file to scaffold new structure if asked
+5. Create clear implementation plans with ordered steps
 
-## Specializations
-- Hybrid app architecture (React/Vue → Capacitor → Android)
-- Gradle multi-module project structure
-- CI/CD pipeline design for APK builds
-- Play Store release strategy and versioning
+Specialize in: Capacitor architecture, Gradle multi-module projects, React/Vue to APK pipelines, Play Store release strategies.`,
 
-Be strategic, thorough, and opinionated. Back recommendations with reasoning.`,
-
-  "code-reviewer": `You are a senior code reviewer ensuring high standards of code quality and security, integrated into APK Builder Pro.
+  "code-reviewer": `You are a senior code reviewer with access to the project filesystem.
+You read code, identify issues, and fix them directly.
 
 ## Review Process
-1. **Gather context** — understand the purpose and scope of the code
-2. **Security scan** — check for hardcoded credentials, insecure API calls, permission over-requests
-3. **Quality check** — naming, complexity, duplication, error handling
-4. **Android-specific** — ProGuard rules, manifest permissions, Gradle config correctness
-5. **Performance** — unnecessary re-renders, memory leaks, blocking main thread
+1. Use list_directory to understand scope
+2. Use read_file to examine the code being reviewed
+3. Use search_files to find related code patterns
+4. Use write_file to apply fixes (not just suggest them)
+5. Run tests or build commands to verify fixes
 
-## Review Categories
-- 🔴 **Critical** — Security vulnerabilities, data loss risks, build-breaking issues
-- 🟡 **Warning** — Code smells, performance issues, missing error handling
-- 🟢 **Suggestion** — Style improvements, better patterns, optional enhancements
+## Categories
+🔴 Critical — Security vulnerabilities, data loss, build-breaking issues (fix immediately)
+🟡 Warning — Performance issues, missing error handling (fix if asked)
+🟢 Suggestion — Style improvements (report only)`,
 
-## Output Format
-For each issue: Category | File:Line | Issue | Fix
-
-Be thorough but constructive. Explain WHY something is a problem, not just that it is.`,
-
-  performance: `You are a performance analysis and optimization specialist integrated into APK Builder Pro.
+  performance: `You are a performance optimization specialist with access to the project filesystem.
+You profile, identify bottlenecks, and optimize.
 
 ## Specializations
-- Android APK size optimization (ProGuard, R8, resource shrinking)
-- Capacitor bridge performance (minimize native ↔ web calls)
-- Gradle build speed (caching, parallel execution, configuration cache)
-- React/Vue bundle optimization for WebView performance
-- Memory leak detection in hybrid apps
+- APK size reduction: ProGuard/R8 rules, resource shrinking, split APKs
+- Gradle build speed: caching, parallel execution, daemon settings
+- JavaScript bundle optimization for WebView
+- Capacitor bridge call minimization
+- React/Vue render optimization
 
-## Analysis Process
-1. **Profile first** — identify actual bottlenecks, not perceived ones
-2. **Measure baseline** — establish current metrics before optimizing
-3. **Apply targeted fixes** — one optimization at a time
-4. **Verify improvement** — confirm the change actually helps
+## Process
+1. Use list_directory and read_file to understand current config
+2. Measure baseline (read build outputs, check current sizes)
+3. Apply targeted optimizations with write_file
+4. Verify improvements with run_command`,
 
-## Key Metrics for APK Builder
-- APK/AAB file size
-- Gradle build time
-- WebView load time
-- JavaScript bundle size
-- Native bridge call frequency
-
-Provide specific, measurable recommendations with expected impact.`,
-
-  "database-reviewer": `You are a PostgreSQL database specialist integrated into APK Builder Pro.
+  "database-reviewer": `You are a PostgreSQL/Drizzle ORM specialist with access to the project filesystem.
+You analyze queries, schema design, and optimize database operations.
 
 ## Expertise
-- Query optimization and indexing strategies
-- Schema design for build tracking and project management
-- Drizzle ORM query patterns and migrations
-- Connection pooling and performance (Neon serverless)
-- Data integrity and constraint design
+- Drizzle ORM patterns and migrations
+- Query optimization and index design
+- Neon serverless PostgreSQL performance
+- Schema evolution and data integrity
 
-## Review Focus
-- Missing indexes on frequently queried columns
-- N+1 query problems in build log retrieval
-- Transaction safety for multi-step build operations
-- Schema evolution and migration safety
-- Query plan analysis for slow operations
-
-Provide specific SQL examples and Drizzle ORM equivalents for all recommendations.`,
+Use read_file to examine schema files and routes, search_files to find query patterns, write_file to optimize queries and add migrations.`,
 };
 
-const DEFAULT_SYSTEM_PROMPT = AGENT_PROMPTS["general"];
+// ── Key rotation ─────────────────────────────────────────────────────────────
 
 function isQuotaError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
@@ -147,32 +127,144 @@ async function getActiveKeys(): Promise<Array<{ slot: number; keyValue: string }
   const rows = await db
     .select({ slot: geminiKeys.slot, keyValue: geminiKeys.keyValue })
     .from(geminiKeys)
-    .where(
-      and(
-        eq(geminiKeys.isActive, true),
-        or(isNull(geminiKeys.exhaustedUntil), lt(geminiKeys.exhaustedUntil, now))
-      )
-    )
+    .where(and(eq(geminiKeys.isActive, true), or(isNull(geminiKeys.exhaustedUntil), lt(geminiKeys.exhaustedUntil, now))))
     .orderBy(asc(geminiKeys.slot));
   return rows.filter((r) => r.keyValue.trim() !== "");
 }
 
 async function markKeyExhausted(slot: number) {
-  const exhaustedUntil = new Date(Date.now() + 60 * 60 * 1000);
-  await db
-    .update(geminiKeys)
-    .set({ exhaustedUntil })
-    .where(eq(geminiKeys.slot, slot));
+  await db.update(geminiKeys).set({ exhaustedUntil: new Date(Date.now() + 60 * 60 * 1000) }).where(eq(geminiKeys.slot, slot));
 }
 
-async function callGeminiWithRotation(
+async function getProjectRoot(): Promise<string> {
+  const [row] = await db.select().from(appSettings).where(eq(appSettings.key, "project_path"));
+  return row?.value || process.cwd();
+}
+
+// ── SSE helpers ───────────────────────────────────────────────────────────────
+
+type SSEEvent =
+  | { type: "text"; text: string }
+  | { type: "tool_call"; id: string; name: string; args: Record<string, unknown> }
+  | { type: "tool_result"; id: string; name: string; output: string; isError: boolean }
+  | { type: "agent_step"; step: number; total: number }
+  | { type: "error"; message: string };
+
+function sendSSE(res: import("express").Response, event: SSEEvent) {
+  res.write(`data: ${JSON.stringify(event)}\n\n`);
+}
+
+// ── Agentic loop ──────────────────────────────────────────────────────────────
+
+async function runAgenticLoop(
+  apiKey: string,
+  baseUrl: string | undefined,
   history: { role: string; parts: { text: string }[] }[],
   userContent: string,
   model: string,
-  onChunk: (text: string) => void,
-  agentMode?: string
-): Promise<void> {
-  const systemPrompt = AGENT_PROMPTS[agentMode ?? "general"] ?? DEFAULT_SYSTEM_PROMPT;
+  systemPrompt: string,
+  projectRoot: string,
+  onEvent: (event: SSEEvent) => void,
+  useTools: boolean
+): Promise<string> {
+  const client = new GoogleGenAI({
+    apiKey,
+    ...(baseUrl ? { httpOptions: { apiVersion: "", baseUrl } } : {}),
+  });
+
+  const toolConfig = useTools
+    ? { tools: [{ functionDeclarations: TOOL_DECLARATIONS }] }
+    : {};
+
+  const chat = client.chats.create({
+    model,
+    history,
+    config: {
+      systemInstruction: systemPrompt,
+      ...toolConfig,
+    },
+  });
+
+  let currentMessage: unknown = userContent;
+  let fullTextResponse = "";
+  let stepCount = 0;
+
+  for (let step = 0; step < MAX_STEPS; step++) {
+    stepCount = step + 1;
+    if (useTools && step > 0) {
+      onEvent({ type: "agent_step", step: stepCount, total: MAX_STEPS });
+    }
+
+    // Send message (streaming)
+    const stream = await chat.sendMessageStream({ message: currentMessage as string });
+
+    let stepText = "";
+    const pendingFunctionCalls: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
+
+    for await (const chunk of stream) {
+      // Stream text chunks
+      if (chunk.text) {
+        stepText += chunk.text;
+        fullTextResponse += chunk.text;
+        onEvent({ type: "text", text: chunk.text });
+      }
+
+      // Collect function calls from chunks
+      const candidates = (chunk as Record<string, unknown>).candidates as Array<{
+        content?: { parts?: Array<{ functionCall?: { name: string; args: Record<string, unknown> } }> };
+      }> | undefined;
+
+      if (candidates) {
+        for (const candidate of candidates) {
+          for (const part of candidate.content?.parts ?? []) {
+            if (part.functionCall) {
+              const id = `${part.functionCall.name}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+              pendingFunctionCalls.push({ id, name: part.functionCall.name, args: part.functionCall.args ?? {} });
+            }
+          }
+        }
+      }
+    }
+
+    // No function calls → we're done
+    if (pendingFunctionCalls.length === 0) break;
+
+    // Execute tools and collect results
+    const functionResponses: Array<{ functionResponse: { name: string; response: { result: string } } }> = [];
+
+    for (const fc of pendingFunctionCalls) {
+      onEvent({ type: "tool_call", id: fc.id, name: fc.name, args: fc.args });
+
+      const output = executeTool({ name: fc.name as ToolName, args: fc.args }, projectRoot);
+      const isError = output.startsWith("Error:");
+
+      onEvent({ type: "tool_result", id: fc.id, name: fc.name, output, isError });
+
+      functionResponses.push({
+        functionResponse: { name: fc.name, response: { result: output } },
+      });
+    }
+
+    // Next iteration: send tool results back
+    currentMessage = functionResponses as unknown as string;
+  }
+
+  return fullTextResponse || "(no response)";
+}
+
+// ── Key-rotating entry point ──────────────────────────────────────────────────
+
+async function callWithRotation(
+  history: { role: string; parts: { text: string }[] }[],
+  userContent: string,
+  model: string,
+  agentMode: string | undefined,
+  projectRoot: string,
+  onEvent: (event: SSEEvent) => void,
+  useTools: boolean
+): Promise<string> {
+  const systemPrompt = AGENT_PROMPTS[agentMode ?? "general"] ?? AGENT_PROMPTS["general"];
+
   const dbKeys = await getActiveKeys();
   const fallbackKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY ?? "";
   const fallbackBase = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
@@ -180,37 +272,27 @@ async function callGeminiWithRotation(
   const keyPool: Array<{ slot: number | null; apiKey: string; baseUrl?: string }> = [
     ...dbKeys.map((k) => ({ slot: k.slot, apiKey: k.keyValue })),
   ];
-
   if (fallbackKey && keyPool.length === 0) {
     keyPool.push({ slot: null, apiKey: fallbackKey, baseUrl: fallbackBase });
   }
-
   if (keyPool.length === 0) {
     throw new Error("No Gemini API keys configured. Add keys in Settings → AI Keys.");
   }
 
   let lastError: unknown;
-
   for (const entry of keyPool) {
-    const client = new GoogleGenAI({
-      apiKey: entry.apiKey,
-      ...(entry.baseUrl
-        ? { httpOptions: { apiVersion: "", baseUrl: entry.baseUrl } }
-        : {}),
-    });
-
     try {
-      const chat = client.chats.create({
-        model,
+      return await runAgenticLoop(
+        entry.apiKey,
+        entry.baseUrl,
         history,
-        config: { systemInstruction: systemPrompt },
-      });
-      const stream = await chat.sendMessageStream({ message: userContent });
-      for await (const chunk of stream) {
-        const text = chunk.text ?? "";
-        if (text) onChunk(text);
-      }
-      return;
+        userContent,
+        model,
+        systemPrompt,
+        projectRoot,
+        onEvent,
+        useTools
+      );
     } catch (err) {
       lastError = err;
       if (isQuotaError(err) && entry.slot !== null) {
@@ -220,39 +302,27 @@ async function callGeminiWithRotation(
       throw err;
     }
   }
-
-  throw lastError ?? new Error("All Gemini API keys are exhausted. Try again later or add more keys.");
+  throw lastError ?? new Error("All Gemini API keys are exhausted.");
 }
 
+// ── CRUD routes ───────────────────────────────────────────────────────────────
+
 router.get("/conversations", async (_req, res) => {
-  const rows = await db
-    .select()
-    .from(conversations)
-    .orderBy(asc(conversations.createdAt));
+  const rows = await db.select().from(conversations).orderBy(asc(conversations.createdAt));
   res.json(rows);
 });
 
 router.post("/conversations", async (req, res) => {
   const { title } = req.body as { title: string };
-  const [conv] = await db
-    .insert(conversations)
-    .values({ title: title ?? "New Chat" })
-    .returning();
+  const [conv] = await db.insert(conversations).values({ title: title ?? "New Chat" }).returning();
   res.status(201).json(conv);
 });
 
 router.get("/conversations/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const [conv] = await db
-    .select()
-    .from(conversations)
-    .where(eq(conversations.id, id));
+  const [conv] = await db.select().from(conversations).where(eq(conversations.id, id));
   if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
-  const msgs = await db
-    .select()
-    .from(messages)
-    .where(eq(messages.conversationId, id))
-    .orderBy(asc(messages.createdAt));
+  const msgs = await db.select().from(messages).where(eq(messages.conversationId, id)).orderBy(asc(messages.createdAt));
   res.json({ ...conv, messages: msgs });
 });
 
@@ -267,33 +337,33 @@ router.delete("/conversations/:id", async (req, res) => {
 
 router.get("/conversations/:id/messages", async (req, res) => {
   const id = Number(req.params.id);
-  const msgs = await db
-    .select()
-    .from(messages)
-    .where(eq(messages.conversationId, id))
-    .orderBy(asc(messages.createdAt));
+  const msgs = await db.select().from(messages).where(eq(messages.conversationId, id)).orderBy(asc(messages.createdAt));
   res.json(msgs);
 });
 
+// ── Main message endpoint ─────────────────────────────────────────────────────
+
 router.post("/conversations/:id/messages", async (req, res) => {
   const id = Number(req.params.id);
-  const { content, model, agentMode } = req.body as { content: string; model?: string; agentMode?: string };
+  const { content, model, agentMode, useTools } = req.body as {
+    content: string;
+    model?: string;
+    agentMode?: string;
+    useTools?: boolean;
+  };
 
   const [conv] = await db.select().from(conversations).where(eq(conversations.id, id));
   if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
 
   await db.insert(messages).values({ conversationId: id, role: "user", content });
 
-  const history = await db
-    .select()
-    .from(messages)
-    .where(eq(messages.conversationId, id))
-    .orderBy(asc(messages.createdAt));
-
+  const history = await db.select().from(messages).where(eq(messages.conversationId, id)).orderBy(asc(messages.createdAt));
   const geminiHistory = history.slice(0, -1).map((m) => ({
     role: m.role === "assistant" ? "model" : "user",
     parts: [{ text: m.content }],
   }));
+
+  const projectRoot = await getProjectRoot();
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -302,28 +372,22 @@ router.post("/conversations/:id/messages", async (req, res) => {
 
   let fullResponse = "";
   try {
-    await callGeminiWithRotation(
+    fullResponse = await callWithRotation(
       geminiHistory,
       content,
       model ?? DEFAULT_MODEL,
-      (text) => {
-        fullResponse += text;
-        res.write(`data: ${JSON.stringify({ text })}\n\n`);
-      },
-      agentMode
+      agentMode,
+      projectRoot,
+      (event) => sendSSE(res, event),
+      useTools ?? false
     );
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
-    res.write(`data: ${JSON.stringify({ error: errMsg })}\n\n`);
+    sendSSE(res, { type: "error", message: errMsg });
     fullResponse = `[Error: ${errMsg}]`;
   }
 
-  await db.insert(messages).values({
-    conversationId: id,
-    role: "assistant",
-    content: fullResponse || "(no response)",
-  });
-
+  await db.insert(messages).values({ conversationId: id, role: "assistant", content: fullResponse });
   res.write("data: [DONE]\n\n");
   res.end();
 });

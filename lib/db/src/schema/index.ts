@@ -4,3 +4,4 @@ export * from "./keystores";
 export * from "./conversations";
 export * from "./messages";
 export * from "./gemini_keys";
+export * from "./settings";

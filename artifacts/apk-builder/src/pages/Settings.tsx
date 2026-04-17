@@ -5,6 +5,7 @@ import { getSystemCheckQueryKey } from "@workspace/api-client-react";
 import {
   CheckCircle, XCircle, AlertTriangle, Cpu, RefreshCw,
   KeyRound, Eye, EyeOff, Save, RotateCcw, Wifi, WifiOff, Loader2,
+  FolderOpen, Bot,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -190,6 +191,10 @@ export default function Settings() {
   const queryClient = useQueryClient();
   const [keySlots, setKeySlots] = useState<KeySlot[]>([]);
   const [loadingKeys, setLoadingKeys] = useState(true);
+  const [projectPath, setProjectPath] = useState("");
+  const [projectPathInput, setProjectPathInput] = useState("");
+  const [savingPath, setSavingPath] = useState(false);
+  const [pathSaved, setPathSaved] = useState(false);
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: getSystemCheckQueryKey() });
@@ -207,7 +212,31 @@ export default function Settings() {
     }
   };
 
-  useEffect(() => { loadKeys(); }, []);
+  const loadSettings = async () => {
+    const r = await fetch(`${API}/settings`);
+    const data = await r.json();
+    const path = data.project_path ?? "";
+    setProjectPath(path);
+    setProjectPathInput(path);
+  };
+
+  const saveProjectPath = async () => {
+    setSavingPath(true);
+    try {
+      await fetch(`${API}/settings/project_path`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: projectPathInput.trim() }),
+      });
+      setProjectPath(projectPathInput.trim());
+      setPathSaved(true);
+      setTimeout(() => setPathSaved(false), 2000);
+    } finally {
+      setSavingPath(false);
+    }
+  };
+
+  useEffect(() => { loadKeys(); loadSettings(); }, []);
 
   const activeCount = keySlots.filter((k) => {
     if (!k.hasKey || !k.isActive) return false;
@@ -305,6 +334,52 @@ export default function Settings() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Agent Settings */}
+      <div className="bg-card border border-card-border rounded-xl p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <Bot className="w-4 h-4 text-primary" />
+          <h2 className="text-sm font-semibold text-foreground">Agent Settings</h2>
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Set the project directory the AI agent will read and write files in. Leave empty to use the current working directory.
+          On Windows, use the full path, e.g. <code className="font-mono bg-muted px-1 rounded">C:\Users\you\my-app</code>
+        </p>
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-muted-foreground">Project Path</label>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <FolderOpen className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                value={projectPathInput}
+                onChange={(e) => setProjectPathInput(e.target.value)}
+                placeholder="/path/to/your/project   or   C:\Users\you\my-app"
+                className="w-full pl-8 pr-3 py-2 text-xs font-mono rounded-lg bg-background/60 border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
+              />
+            </div>
+            <button
+              onClick={saveProjectPath}
+              disabled={savingPath || projectPathInput === projectPath}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs rounded-lg bg-primary/15 text-primary border border-primary/25 hover:bg-primary/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {savingPath ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : pathSaved ? (
+                <CheckCircle className="w-3.5 h-3.5 text-green-400" />
+              ) : (
+                <Save className="w-3.5 h-3.5" />
+              )}
+              {pathSaved ? "Saved" : "Save"}
+            </button>
+          </div>
+          {projectPath && (
+            <p className="text-xs text-green-400/80 flex items-center gap-1">
+              <CheckCircle className="w-3 h-3" /> Agent root: <code className="font-mono">{projectPath}</code>
+            </p>
+          )}
+        </div>
       </div>
 
       {/* System Requirements */}

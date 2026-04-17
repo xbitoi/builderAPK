@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Bot, X, Send, Trash2, Plus, ChevronDown,
+  Bot, X, Send, Trash2, Plus, ChevronDown, ChevronRight,
   MessageSquare, Loader2, AlertCircle, Copy, Check,
   FileSearch, Sparkles, Wrench, Code2, Shield, Zap,
-  Database, Command,
+  Database, Command, FileCode, Terminal, FolderOpen,
+  Search, FileEdit, PlayCircle, ToggleLeft, ToggleRight,
 } from "lucide-react";
 import { useAIChat } from "@/contexts/AIChatContext";
 import { Button } from "@/components/ui/button";
@@ -26,30 +27,67 @@ const MODELS = [
 ];
 
 const AGENTS = [
-  { id: "general",        label: "General",       icon: Bot,       color: "text-primary",    bg: "bg-primary/10 border-primary/30",      desc: "Android build assistant" },
-  { id: "build-resolver", label: "Build Fix",     icon: Wrench,    color: "text-red-400",    bg: "bg-red-500/10 border-red-500/30",       desc: "Fix build & Gradle errors" },
-  { id: "architect",      label: "Architect",     icon: Code2,     color: "text-blue-400",   bg: "bg-blue-500/10 border-blue-500/30",     desc: "System design & architecture" },
-  { id: "code-reviewer",  label: "Reviewer",      icon: Shield,    color: "text-amber-400",  bg: "bg-amber-500/10 border-amber-500/30",   desc: "Code quality & security" },
-  { id: "performance",    label: "Performance",   icon: Zap,       color: "text-green-400",  bg: "bg-green-500/10 border-green-500/30",   desc: "Optimize APK & build speed" },
-  { id: "database-reviewer", label: "Database",  icon: Database,  color: "text-purple-400", bg: "bg-purple-500/10 border-purple-500/30", desc: "PostgreSQL & Drizzle ORM" },
+  { id: "general",           label: "General",     icon: Bot,      color: "text-primary",    bg: "bg-primary/10 border-primary/30",       desc: "Android build assistant" },
+  { id: "build-resolver",    label: "Build Fix",   icon: Wrench,   color: "text-red-400",    bg: "bg-red-500/10 border-red-500/30",        desc: "Fix build & Gradle errors" },
+  { id: "architect",         label: "Architect",   icon: Code2,    color: "text-blue-400",   bg: "bg-blue-500/10 border-blue-500/30",      desc: "System design & architecture" },
+  { id: "code-reviewer",     label: "Reviewer",    icon: Shield,   color: "text-amber-400",  bg: "bg-amber-500/10 border-amber-500/30",    desc: "Code quality & security" },
+  { id: "performance",       label: "Perf",        icon: Zap,      color: "text-green-400",  bg: "bg-green-500/10 border-green-500/30",    desc: "Optimize APK & build speed" },
+  { id: "database-reviewer", label: "Database",    icon: Database, color: "text-purple-400", bg: "bg-purple-500/10 border-purple-500/30",  desc: "PostgreSQL & Drizzle ORM" },
 ];
 
 const SLASH_COMMANDS = [
-  { cmd: "/fix",      label: "Fix build errors",             template: "Fix the following build error:\n\n```\n\n```" },
-  { cmd: "/review",   label: "Review code",                  template: "Please review the following code for quality, security, and best practices:\n\n```\n\n```" },
-  { cmd: "/gradle",   label: "Fix Gradle issue",             template: "Fix this Gradle build error for my Android project:\n\n```\n\n```" },
-  { cmd: "/plan",     label: "Plan implementation",          template: "Create a step-by-step implementation plan for:\n\n" },
-  { cmd: "/analyze",  label: "Analyze build logs",           template: "Analyze these Android build logs and identify all errors with fix steps:\n\n```\n\n```" },
-  { cmd: "/optimize", label: "Optimize APK size/speed",      template: "How can I optimize the following for my Android APK:\n\n" },
-  { cmd: "/keystore", label: "Keystore help",                template: "Help me with Android keystore signing:\n\n" },
-  { cmd: "/capacitor",label: "Capacitor configuration",      template: "Help me configure Capacitor for:\n\n" },
-  { cmd: "/playstore",label: "Play Store preparation",       template: "What do I need to prepare for Play Store submission? My app details:\n\n" },
+  { cmd: "/fix",       label: "Fix build errors",           template: "Fix the following build error:\n\n```\n\n```" },
+  { cmd: "/review",    label: "Review code",                template: "Please review this code for quality, security, and best practices:\n\n```\n\n```" },
+  { cmd: "/gradle",    label: "Fix Gradle issue",           template: "Fix this Gradle build error:\n\n```\n\n```" },
+  { cmd: "/plan",      label: "Plan implementation",        template: "Create a step-by-step implementation plan for:\n\n" },
+  { cmd: "/analyze",   label: "Analyze build logs",         template: "Analyze these Android build logs and identify all errors with fix steps:\n\n```\n\n```" },
+  { cmd: "/optimize",  label: "Optimize APK size/speed",    template: "Optimize the following for my Android APK:\n\n" },
+  { cmd: "/keystore",  label: "Keystore help",              template: "Help me with Android keystore signing:\n\n" },
+  { cmd: "/capacitor", label: "Capacitor config",           template: "Help me configure Capacitor for:\n\n" },
+  { cmd: "/playstore", label: "Play Store preparation",     template: "What do I need for Play Store submission? My app:\n\n" },
+  { cmd: "/write",     label: "Write code to file",         template: "Write the following code to my project:\n\n" },
+  { cmd: "/run",       label: "Run a command",              template: "Run this command in my project:\n\n" },
 ];
 
+const TOOL_ICONS: Record<string, typeof FileCode> = {
+  read_file: FileCode,
+  write_file: FileEdit,
+  run_command: Terminal,
+  list_directory: FolderOpen,
+  search_files: Search,
+};
+
+const TOOL_LABELS: Record<string, string> = {
+  read_file: "Reading file",
+  write_file: "Writing file",
+  run_command: "Running command",
+  list_directory: "Listing directory",
+  search_files: "Searching files",
+};
+
 type Role = "user" | "assistant";
-interface Message { id: number; role: Role; content: string; streaming?: boolean; }
+
+interface ToolEvent {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+  output?: string;
+  isError?: boolean;
+  collapsed: boolean;
+}
+
+interface Message {
+  id: number;
+  role: Role;
+  content: string;
+  streaming?: boolean;
+  agentStep?: number;
+  toolEvents?: ToolEvent[];
+}
+
 interface Conversation { id: number; title: string; createdAt: string; }
 
+// ── Markdown renderer ─────────────────────────────────────────────────────────
 function SimpleMarkdown({ text }: { text: string }) {
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const parts: React.ReactNode[] = [];
@@ -114,6 +152,61 @@ function SimpleMarkdown({ text }: { text: string }) {
   return <div className="space-y-0.5">{parts}</div>;
 }
 
+// ── Tool call card ────────────────────────────────────────────────────────────
+function ToolCallCard({ event, onToggle }: { event: ToolEvent; onToggle: () => void }) {
+  const Icon = TOOL_ICONS[event.name] ?? Terminal;
+  const label = TOOL_LABELS[event.name] ?? event.name;
+  const hasResult = event.output !== undefined;
+  const isPending = !hasResult;
+
+  const argSummary = (() => {
+    if (event.args.path) return String(event.args.path);
+    if (event.args.command) return String(event.args.command);
+    if (event.args.query) return `"${event.args.query}"`;
+    return "";
+  })();
+
+  return (
+    <div className={cn(
+      "rounded-lg border text-xs overflow-hidden my-1",
+      isPending ? "border-blue-500/25 bg-blue-500/5" :
+      event.isError ? "border-red-500/25 bg-red-500/5" :
+      "border-green-500/20 bg-green-500/5"
+    )}>
+      <button
+        onClick={onToggle}
+        className="flex items-center gap-2 w-full px-2.5 py-2 text-left hover:bg-white/5 transition-colors"
+      >
+        <Icon className={cn("w-3.5 h-3.5 flex-shrink-0",
+          isPending ? "text-blue-400 animate-pulse" :
+          event.isError ? "text-red-400" : "text-green-400"
+        )} />
+        <span className={cn("font-medium flex-shrink-0",
+          isPending ? "text-blue-300" :
+          event.isError ? "text-red-300" : "text-green-300"
+        )}>{label}</span>
+        {argSummary && (
+          <span className="text-muted-foreground font-mono truncate flex-1">{argSummary}</span>
+        )}
+        {isPending && <Loader2 className="w-3 h-3 text-blue-400 animate-spin flex-shrink-0 ml-auto" />}
+        {!isPending && (
+          event.collapsed
+            ? <ChevronRight className="w-3 h-3 text-muted-foreground flex-shrink-0 ml-auto" />
+            : <ChevronDown className="w-3 h-3 text-muted-foreground flex-shrink-0 ml-auto" />
+        )}
+      </button>
+      {!event.collapsed && event.output && (
+        <div className="border-t border-border/50 px-2.5 py-2 max-h-48 overflow-y-auto">
+          <pre className={cn("text-xs font-mono whitespace-pre-wrap break-words leading-relaxed",
+            event.isError ? "text-red-300" : "text-slate-300"
+          )}>{event.output.slice(0, 2000)}{event.output.length > 2000 ? "\n[truncated]" : ""}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 export default function AIChatPanel({ onClose }: { onClose?: () => void }) {
   const { isOpen, setIsOpen, contextLogs, setContextLogs } = useAIChat();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -122,6 +215,7 @@ export default function AIChatPanel({ onClose }: { onClose?: () => void }) {
   const [input, setInput] = useState("");
   const [model, setModel] = useState("gemini-2.5-flash");
   const [agentMode, setAgentMode] = useState("general");
+  const [useTools, setUseTools] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [showConvList, setShowConvList] = useState(false);
   const [loadingConvs, setLoadingConvs] = useState(false);
@@ -143,7 +237,9 @@ export default function AIChatPanel({ onClose }: { onClose?: () => void }) {
   const loadMessages = useCallback(async (convId: number) => {
     const r = await fetch(`${API}/gemini/conversations/${convId}`);
     const data = await r.json();
-    setMessages((data.messages || []).map((m: { id: number; role: string; content: string }) => ({ id: m.id, role: m.role as Role, content: m.content })));
+    setMessages((data.messages || []).map((m: { id: number; role: string; content: string }) => ({
+      id: m.id, role: m.role as Role, content: m.content
+    })));
   }, []);
 
   useEffect(() => { if (isOpen) loadConversations(); }, [isOpen, loadConversations]);
@@ -151,10 +247,9 @@ export default function AIChatPanel({ onClose }: { onClose?: () => void }) {
 
   // Slash command detection
   useEffect(() => {
-    if (input.startsWith("/") && !input.includes(" ")) {
+    if (input.startsWith("/") && !input.includes(" ") && !input.includes("\n")) {
       const q = input.toLowerCase();
-      const matches = SLASH_COMMANDS.filter((c) => c.cmd.startsWith(q));
-      setSlashCmds(matches);
+      setSlashCmds(SLASH_COMMANDS.filter((c) => c.cmd.startsWith(q)));
       setSlashIdx(0);
     } else {
       setSlashCmds([]);
@@ -184,7 +279,14 @@ export default function AIChatPanel({ onClose }: { onClose?: () => void }) {
     if (activeConvId === id) { setActiveConvId(null); setMessages([]); }
   };
 
-  const sendMessage = async (msgContent?: string) => {
+  const toggleToolEvent = (msgId: number, eventId: string) => {
+    setMessages((prev) => prev.map((m) => m.id === msgId ? {
+      ...m,
+      toolEvents: m.toolEvents?.map((e) => e.id === eventId ? { ...e, collapsed: !e.collapsed } : e),
+    } : m));
+  };
+
+  const sendMessage = async (msgContent?: string, overrideTools?: boolean) => {
     const content = (msgContent ?? input).trim();
     if (!content || streaming) return;
     setInput("");
@@ -192,44 +294,117 @@ export default function AIChatPanel({ onClose }: { onClose?: () => void }) {
     if (!convId) convId = await createConv(content);
 
     const userMsg: Message = { id: Date.now(), role: "user", content };
-    const asstMsg: Message = { id: Date.now() + 1, role: "assistant", content: "", streaming: true };
+    const asstId = Date.now() + 1;
+    const asstMsg: Message = { id: asstId, role: "assistant", content: "", streaming: true, toolEvents: [] };
     setMessages((prev) => [...prev, userMsg, asstMsg]);
     setStreaming(true);
     abortRef.current = new AbortController();
 
+    const shouldUseTools = overrideTools ?? useTools;
+
     try {
       const r = await fetch(`${API}/gemini/conversations/${convId}/messages`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content, model, agentMode }), signal: abortRef.current.signal,
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content, model, agentMode, useTools: shouldUseTools }),
+        signal: abortRef.current.signal,
       });
-      const reader = r.body?.getReader(); const decoder = new TextDecoder();
-      let buffer = ""; let full = "";
+
+      const reader = r.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let full = "";
+
       if (reader) {
         while (true) {
-          const { done, value } = await reader.read(); if (done) break;
+          const { done, value } = await reader.read();
+          if (done) break;
           buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n"); buffer = lines.pop() ?? "";
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+
           for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              const data = line.slice(6); if (data === "[DONE]") break;
-              try { const parsed = JSON.parse(data); if (parsed.text) { full += parsed.text; setMessages((prev) => prev.map((m) => m.streaming ? { ...m, content: full } : m)); } } catch { /* ignore */ }
-            }
+            if (!line.startsWith("data: ")) continue;
+            const data = line.slice(6);
+            if (data === "[DONE]") break;
+
+            try {
+              const parsed = JSON.parse(data) as {
+                type?: string;
+                text?: string;
+                id?: string;
+                name?: string;
+                args?: Record<string, unknown>;
+                output?: string;
+                isError?: boolean;
+                step?: number;
+                total?: number;
+                message?: string;
+              };
+
+              if (parsed.type === "text" || parsed.text) {
+                const chunk = parsed.text ?? "";
+                full += chunk;
+                setMessages((prev) => prev.map((m) =>
+                  m.id === asstId ? { ...m, content: full } : m
+                ));
+              } else if (parsed.type === "tool_call") {
+                const newEvent: ToolEvent = {
+                  id: parsed.id!,
+                  name: parsed.name!,
+                  args: parsed.args ?? {},
+                  collapsed: false,
+                };
+                setMessages((prev) => prev.map((m) =>
+                  m.id === asstId ? { ...m, toolEvents: [...(m.toolEvents ?? []), newEvent] } : m
+                ));
+              } else if (parsed.type === "tool_result") {
+                setMessages((prev) => prev.map((m) =>
+                  m.id === asstId ? {
+                    ...m,
+                    toolEvents: m.toolEvents?.map((e) =>
+                      e.id === parsed.id
+                        ? { ...e, output: parsed.output, isError: parsed.isError ?? false, collapsed: true }
+                        : e
+                    ),
+                  } : m
+                ));
+              } else if (parsed.type === "agent_step") {
+                setMessages((prev) => prev.map((m) =>
+                  m.id === asstId ? { ...m, agentStep: parsed.step } : m
+                ));
+              } else if (parsed.type === "error") {
+                full += `\n\n**Error:** ${parsed.message}`;
+                setMessages((prev) => prev.map((m) =>
+                  m.id === asstId ? { ...m, content: full } : m
+                ));
+              }
+            } catch { /* ignore parse errors */ }
           }
         }
       }
-      setMessages((prev) => prev.map((m) => m.streaming ? { ...m, streaming: false, content: full || "(no response)" } : m));
+
+      setMessages((prev) => prev.map((m) =>
+        m.id === asstId ? { ...m, streaming: false, content: full || "(no response)" } : m
+      ));
       setConversations((prev) => prev.map((c) => c.id === convId ? { ...c, title: content.slice(0, 40) } : c));
     } catch (err) {
       if ((err as Error).name !== "AbortError")
-        setMessages((prev) => prev.map((m) => m.streaming ? { ...m, streaming: false, content: "Error: failed to get response." } : m));
-    } finally { setStreaming(false); abortRef.current = null; }
+        setMessages((prev) => prev.map((m) =>
+          m.id === asstId ? { ...m, streaming: false, content: "Error: failed to get response." } : m
+        ));
+    } finally {
+      setStreaming(false);
+      abortRef.current = null;
+    }
   };
 
   const handleAnalyzeLogs = () => {
     if (!contextLogs) return;
     setAgentMode("build-resolver");
     const prompt = `Analyze these Android build logs and identify all errors with specific fix steps:\n\n\`\`\`\n${contextLogs.slice(0, 3000)}\n\`\`\``;
-    setContextLogs(null); sendMessage(prompt);
+    setContextLogs(null);
+    sendMessage(prompt);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -243,11 +418,21 @@ export default function AIChatPanel({ onClose }: { onClose?: () => void }) {
   };
 
   const stopStreaming = () => {
-    abortRef.current?.abort(); setStreaming(false);
+    abortRef.current?.abort();
+    setStreaming(false);
     setMessages((prev) => prev.map((m) => m.streaming ? { ...m, streaming: false } : m));
   };
 
   const activeAgent = AGENTS.find((a) => a.id === agentMode) ?? AGENTS[0];
+
+  const QUICK_SUGGESTIONS: Record<string, string[]> = {
+    "general":           ["Analyze my build logs for errors", "How do I configure Capacitor?", "Help me set up a release keystore"],
+    "build-resolver":    ["Fix my Gradle sync error", "Resolve a TypeScript build error", "Fix duplicate class in Android build"],
+    "architect":         ["Design my web-to-Android pipeline", "Best structure for a Capacitor app", "Plan a multi-flavor Android build"],
+    "code-reviewer":     ["Review my Capacitor config", "Review my build.gradle file", "Check my AndroidManifest.xml"],
+    "performance":       ["Reduce my APK size", "Speed up Gradle build time", "Optimize WebView performance"],
+    "database-reviewer": ["Optimize my build logs query", "Review my Drizzle schema", "Add indexes for faster queries"],
+  };
 
   const panelContent = (
     <div className="flex flex-col h-full">
@@ -259,7 +444,7 @@ export default function AIChatPanel({ onClose }: { onClose?: () => void }) {
           </div>
           <div>
             <div className="text-sm font-semibold text-foreground">AI Assistant</div>
-            <div className={cn("text-xs", activeAgent.color)}>{activeAgent.label} Mode</div>
+            <div className={cn("text-xs", activeAgent.color)}>{activeAgent.label} · {useTools ? "Agent" : "Chat"} Mode</div>
           </div>
         </div>
         <div className="flex items-center gap-1.5">
@@ -273,7 +458,8 @@ export default function AIChatPanel({ onClose }: { onClose?: () => void }) {
               ))}
             </SelectContent>
           </Select>
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => { setIsOpen(false); onClose?.(); }}>
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            onClick={() => { setIsOpen(false); onClose?.(); }}>
             <X className="w-4 h-4" />
           </Button>
         </div>
@@ -282,21 +468,33 @@ export default function AIChatPanel({ onClose }: { onClose?: () => void }) {
       {/* Agent selector */}
       <div className="flex gap-1 px-2 py-2 border-b border-border bg-background/10 flex-shrink-0 overflow-x-auto scrollbar-none">
         {AGENTS.map((a) => (
-          <button
-            key={a.id}
-            onClick={() => setAgentMode(a.id)}
-            title={a.desc}
+          <button key={a.id} onClick={() => setAgentMode(a.id)} title={a.desc}
             className={cn(
               "flex items-center gap-1 px-2 py-1 rounded-md border text-xs font-medium whitespace-nowrap transition-all flex-shrink-0",
-              agentMode === a.id
-                ? cn("border", a.bg, a.color)
-                : "border-border text-muted-foreground hover:border-border/80 hover:text-foreground bg-transparent"
-            )}
-          >
+              agentMode === a.id ? cn("border", a.bg, a.color) : "border-border text-muted-foreground hover:border-border/80 hover:text-foreground bg-transparent"
+            )}>
             <a.icon className="w-3 h-3" />
             {a.label}
           </button>
         ))}
+      </div>
+
+      {/* Agent Mode toggle */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-background/5 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <PlayCircle className={cn("w-3.5 h-3.5", useTools ? "text-primary" : "text-muted-foreground")} />
+          <span className="text-xs font-medium text-foreground">Agent Mode</span>
+          {useTools && <span className="text-xs text-primary bg-primary/10 border border-primary/25 px-1.5 py-0.5 rounded-full">ACTIVE</span>}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">{useTools ? "Reads & writes files, runs commands" : "Chat only"}</span>
+          <button onClick={() => setUseTools((v) => !v)} className="text-muted-foreground hover:text-foreground transition-colors">
+            {useTools
+              ? <ToggleRight className="w-6 h-6 text-primary" />
+              : <ToggleLeft className="w-6 h-6" />
+            }
+          </button>
+        </div>
       </div>
 
       {/* Conversation bar */}
@@ -309,7 +507,7 @@ export default function AIChatPanel({ onClose }: { onClose?: () => void }) {
           <ChevronDown className={cn("w-3 h-3 text-muted-foreground flex-shrink-0 transition-transform", showConvList && "rotate-180")} />
         </button>
         <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary flex-shrink-0"
-          onClick={() => { setActiveConvId(null); setMessages([]); setShowConvList(false); }} title="New conversation">
+          onClick={() => { setActiveConvId(null); setMessages([]); setShowConvList(false); }}>
           <Plus className="w-3.5 h-3.5" />
         </Button>
       </div>
@@ -317,11 +515,13 @@ export default function AIChatPanel({ onClose }: { onClose?: () => void }) {
       {/* Conversation list */}
       <AnimatePresence>
         {showConvList && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.18 }}
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden flex-shrink-0 border-b border-border">
             <div className="max-h-44 overflow-y-auto bg-background/50">
-              {loadingConvs ? <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
-                : conversations.length === 0 ? <div className="text-xs text-muted-foreground text-center py-4">No conversations yet</div>
+              {loadingConvs
+                ? <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
+                : conversations.length === 0
+                ? <div className="text-xs text-muted-foreground text-center py-4">No conversations yet</div>
                 : conversations.map((conv) => (
                   <div key={conv.id} onClick={() => { setActiveConvId(conv.id); setShowConvList(false); }}
                     className={cn("flex items-center justify-between px-3 py-2 cursor-pointer group transition-colors",
@@ -365,41 +565,19 @@ export default function AIChatPanel({ onClose }: { onClose?: () => void }) {
                 <activeAgent.icon className={cn("w-6 h-6", activeAgent.color)} />
               </div>
               <div className="text-sm font-medium text-foreground mb-1">{activeAgent.label} Agent</div>
-              <div className="text-xs text-muted-foreground max-w-[260px] leading-relaxed mb-4">{activeAgent.desc}</div>
+              <div className="text-xs text-muted-foreground max-w-[260px] leading-relaxed mb-3">{activeAgent.desc}</div>
+              {useTools && (
+                <div className="flex items-center gap-1.5 mb-3 px-2.5 py-1.5 rounded-lg bg-primary/10 border border-primary/20">
+                  <PlayCircle className="w-3.5 h-3.5 text-primary" />
+                  <span className="text-xs text-primary">Can read files, write code & run commands</span>
+                </div>
+              )}
               <div className="w-full space-y-1.5">
-                {agentMode === "general" && ["Analyze my build logs for errors", "How do I configure Capacitor?", "Help me set up a release keystore"].map((s) => (
+                {(QUICK_SUGGESTIONS[agentMode] ?? QUICK_SUGGESTIONS["general"]).map((s) => (
                   <button key={s} onClick={() => sendMessage(s)}
-                    className="w-full text-xs text-left px-3 py-2 rounded-lg bg-background/50 border border-border hover:border-primary/40 hover:bg-primary/5 text-muted-foreground hover:text-foreground transition-all">
-                    {s}
-                  </button>
-                ))}
-                {agentMode === "build-resolver" && ["Fix my Gradle sync error", "Resolve a TypeScript build error", "Fix duplicate class in Android build"].map((s) => (
-                  <button key={s} onClick={() => sendMessage(s)}
-                    className="w-full text-xs text-left px-3 py-2 rounded-lg bg-background/50 border border-border hover:border-red-500/40 hover:bg-red-500/5 text-muted-foreground hover:text-foreground transition-all">
-                    {s}
-                  </button>
-                ))}
-                {agentMode === "architect" && ["Design my web-to-Android pipeline", "Best structure for a Capacitor app", "Plan a multi-flavor Android build"].map((s) => (
-                  <button key={s} onClick={() => sendMessage(s)}
-                    className="w-full text-xs text-left px-3 py-2 rounded-lg bg-background/50 border border-border hover:border-blue-500/40 hover:bg-blue-500/5 text-muted-foreground hover:text-foreground transition-all">
-                    {s}
-                  </button>
-                ))}
-                {agentMode === "code-reviewer" && ["Review my Capacitor config", "Review my build.gradle file", "Check my AndroidManifest.xml"].map((s) => (
-                  <button key={s} onClick={() => sendMessage(s)}
-                    className="w-full text-xs text-left px-3 py-2 rounded-lg bg-background/50 border border-border hover:border-amber-500/40 hover:bg-amber-500/5 text-muted-foreground hover:text-foreground transition-all">
-                    {s}
-                  </button>
-                ))}
-                {agentMode === "performance" && ["Reduce my APK size", "Speed up Gradle build time", "Optimize WebView performance"].map((s) => (
-                  <button key={s} onClick={() => sendMessage(s)}
-                    className="w-full text-xs text-left px-3 py-2 rounded-lg bg-background/50 border border-border hover:border-green-500/40 hover:bg-green-500/5 text-muted-foreground hover:text-foreground transition-all">
-                    {s}
-                  </button>
-                ))}
-                {agentMode === "database-reviewer" && ["Optimize my build logs query", "Review my Drizzle schema", "Add indexes for faster queries"].map((s) => (
-                  <button key={s} onClick={() => sendMessage(s)}
-                    className="w-full text-xs text-left px-3 py-2 rounded-lg bg-background/50 border border-border hover:border-purple-500/40 hover:bg-purple-500/5 text-muted-foreground hover:text-foreground transition-all">
+                    className={cn("w-full text-xs text-left px-3 py-2 rounded-lg bg-background/50 border border-border transition-all text-muted-foreground hover:text-foreground",
+                      `hover:border-${activeAgent.color.replace("text-", "")}/40 hover:bg-${activeAgent.color.replace("text-", "")}/5`
+                    )}>
                     {s}
                   </button>
                 ))}
@@ -410,6 +588,7 @@ export default function AIChatPanel({ onClose }: { onClose?: () => void }) {
               </div>
             </div>
           )}
+
           {messages.map((msg) => (
             <div key={msg.id} className={cn("flex gap-2", msg.role === "user" ? "flex-row-reverse" : "flex-row")}>
               {msg.role === "assistant" && (
@@ -417,21 +596,58 @@ export default function AIChatPanel({ onClose }: { onClose?: () => void }) {
                   <activeAgent.icon className={cn("w-3 h-3", activeAgent.color)} />
                 </div>
               )}
-              <div className={cn("max-w-[85%] rounded-xl px-3 py-2.5",
-                msg.role === "user" ? "bg-primary/20 border border-primary/30 ml-auto" : "bg-background/60 border border-border")}>
-                {msg.role === "user"
-                  ? <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-                  : <>
-                    {msg.content ? <SimpleMarkdown text={msg.content} /> : null}
-                    {msg.streaming && (
-                      <span className="inline-flex items-center gap-1 mt-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
-                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
-                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
-                      </span>
+              <div className={cn("max-w-[90%] min-w-0",
+                msg.role === "user"
+                  ? "bg-primary/20 border border-primary/30 ml-auto rounded-xl px-3 py-2.5"
+                  : "flex-1"
+              )}>
+                {msg.role === "user" ? (
+                  <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                ) : (
+                  <div className="space-y-1">
+                    {/* Agent step indicator */}
+                    {msg.agentStep && msg.streaming && (
+                      <div className="flex items-center gap-1.5 text-xs text-primary/70 mb-1">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <span>Step {msg.agentStep} · Agent working…</span>
+                      </div>
                     )}
-                  </>
-                }
+
+                    {/* Tool events */}
+                    {(msg.toolEvents ?? []).map((event) => (
+                      <ToolCallCard
+                        key={event.id}
+                        event={event}
+                        onToggle={() => toggleToolEvent(msg.id, event.id)}
+                      />
+                    ))}
+
+                    {/* Text content */}
+                    {msg.content && (
+                      <div className="bg-background/60 border border-border rounded-xl px-3 py-2.5">
+                        <SimpleMarkdown text={msg.content} />
+                        {msg.streaming && !msg.toolEvents?.some((e) => !e.output) && (
+                          <span className="inline-flex items-center gap-1 mt-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
+                            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
+                            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Streaming but no text yet — tool calls pending */}
+                    {!msg.content && msg.streaming && (
+                      <div className="bg-background/60 border border-border rounded-xl px-3 py-2.5">
+                        <span className="inline-flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -455,7 +671,7 @@ export default function AIChatPanel({ onClose }: { onClose?: () => void }) {
               </button>
             ))}
             <div className="px-3 py-1 text-xs text-muted-foreground/50 border-t border-border bg-background/50">
-              Tab or Enter to select · Esc to close
+              Tab / Enter to select · Esc to close
             </div>
           </motion.div>
         )}
@@ -465,9 +681,16 @@ export default function AIChatPanel({ onClose }: { onClose?: () => void }) {
       <div className="p-3 flex-shrink-0">
         <div className="flex gap-2 items-end">
           <div className="relative flex-1">
-            <textarea ref={textareaRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
-              placeholder={`${activeAgent.label} · Ask anything or type / for commands`} rows={2} disabled={streaming}
-              className="w-full resize-none rounded-lg bg-background/60 border border-border text-sm text-foreground placeholder:text-muted-foreground px-3 py-2 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all disabled:opacity-50" />
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={useTools ? `${activeAgent.label} Agent · Ask to read/write files or run commands` : `${activeAgent.label} · Ask anything or type / for commands`}
+              rows={2}
+              disabled={streaming}
+              className="w-full resize-none rounded-lg bg-background/60 border border-border text-sm text-foreground placeholder:text-muted-foreground px-3 py-2 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all disabled:opacity-50"
+            />
           </div>
           {streaming
             ? <Button size="icon" variant="destructive" className="h-10 w-10 flex-shrink-0" onClick={stopStreaming}><AlertCircle className="w-4 h-4" /></Button>
@@ -479,7 +702,7 @@ export default function AIChatPanel({ onClose }: { onClose?: () => void }) {
         <div className="mt-1 flex items-center justify-between">
           <div className="flex items-center gap-1">
             <Sparkles className={cn("w-2.5 h-2.5", activeAgent.color)} />
-            <span className="text-xs text-muted-foreground/50">{activeAgent.label}</span>
+            <span className="text-xs text-muted-foreground/50">{activeAgent.label}{useTools ? " · Agent" : ""}</span>
           </div>
           <div className="text-xs text-muted-foreground/50 hidden sm:block">Enter · Shift+Enter new line</div>
         </div>
@@ -489,7 +712,7 @@ export default function AIChatPanel({ onClose }: { onClose?: () => void }) {
 
   return (
     <>
-      {/* Desktop: inline left panel */}
+      {/* Desktop */}
       <AnimatePresence initial={false}>
         {isOpen && (
           <motion.div key="ai-desktop" initial={{ width: 0, opacity: 0 }} animate={{ width: 380, opacity: 1 }}
@@ -500,7 +723,7 @@ export default function AIChatPanel({ onClose }: { onClose?: () => void }) {
         )}
       </AnimatePresence>
 
-      {/* Mobile: full-screen overlay */}
+      {/* Mobile */}
       <AnimatePresence>
         {isOpen && (
           <>
